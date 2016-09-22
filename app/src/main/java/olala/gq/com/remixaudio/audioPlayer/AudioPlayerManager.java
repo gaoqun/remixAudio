@@ -6,7 +6,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.support.annotation.NonNull;
-import android.text.TextUtils;
+import android.support.annotation.Nullable;
 import android.util.Log;
 
 import java.io.IOException;
@@ -24,6 +24,12 @@ public class AudioPlayerManager implements AudioMediaControl, MediaPlayer.OnBuff
     private int duration = 0;
     private java.text.DecimalFormat df = new java.text.DecimalFormat("#.00");
     private int currentPosition;
+
+    private enum State {
+        PLAYING, PAUSE, RECOVERY, STOP
+    }
+
+    private State mState;
 
 
     private AudioPlayerManager() {
@@ -82,8 +88,6 @@ public class AudioPlayerManager implements AudioMediaControl, MediaPlayer.OnBuff
 
     @Override
     public void onBufferingUpdate(MediaPlayer mediaPlayer, int i) {
-
-        Log.d(TAG, "onBufferingUpdate");
         if (!checkAudioPlay(mediaPlayer) && i > 0) {
             duration = mediaPlayer.getDuration();
             if (caculatePostion == null) {
@@ -97,7 +101,6 @@ public class AudioPlayerManager implements AudioMediaControl, MediaPlayer.OnBuff
     public void onCompletion(MediaPlayer mediaPlayer) {
         if (!checkAudioPlay(mediaPlayer)) {
             mediaPlayer.release();
-            mediaPlayer = null;
         }
     }
 
@@ -114,10 +117,11 @@ public class AudioPlayerManager implements AudioMediaControl, MediaPlayer.OnBuff
             mMediaPlayer.reset();
             mMediaPlayer.setDataSource(url);
             mMediaPlayer.prepareAsync();
+            mState = State.PLAYING;
         } catch (IOException | IllegalStateException | SecurityException | IllegalArgumentException e) {
             e.printStackTrace();
-            if (e != null && !e.getMessage().isEmpty())
-                Log.d("playAudio_exception", e.getMessage());
+            if (e != null)
+                showErrorMessageLog("playAudio_exception", e.getMessage());
             mMediaPlayer.release();
         }
     }
@@ -128,23 +132,37 @@ public class AudioPlayerManager implements AudioMediaControl, MediaPlayer.OnBuff
         try {
             if (mMediaPlayer.isPlaying()) {
                 mMediaPlayer.pause();
-            } else {
-                mMediaPlayer.start();
+                mState = State.PAUSE;
             }
         } catch (IllegalStateException e) {
             e.printStackTrace();
-            if (e != null && !TextUtils.isEmpty(e.getMessage()))
-                Log.d("pause_exception", e.getMessage());
+            if (e != null)
+                showErrorMessageLog("pause_error", e.getMessage());
             mMediaPlayer.release();
+        }
+    }
+
+    @Override
+    public void recovery() {
+        if (checkAudioPlay(mMediaPlayer)) return;
+        if (mState == State.PAUSE) {
+            try {
+                mMediaPlayer.start();
+            } catch (IllegalStateException e) {
+
+            }
         }
     }
 
     @Override
     public void stop() {
         if (checkAudioPlay(mMediaPlayer)) return;
+        mMediaPlayer.stop();
+        mState = State.STOP;
         mMediaPlayer.release();
-        mMediaPlayer = null;
+        duration = 0;
         sHandler.obtainMessage(RECORD_CURRENT_POSITION, 0).sendToTarget();
+        mMediaPlayer = null;
     }
 
 
@@ -161,6 +179,8 @@ public class AudioPlayerManager implements AudioMediaControl, MediaPlayer.OnBuff
         if (sHandler != null) sHandler.removeCallbacksAndMessages(null);
         stop();
         duration = 0;
+        mMediaPlayer = null;
+        System.gc();
     }
 
     @Override
@@ -191,6 +211,14 @@ public class AudioPlayerManager implements AudioMediaControl, MediaPlayer.OnBuff
                 }
             }
             caculatePostion = null;
+        }
+    }
+
+    private void showErrorMessageLog(@Nullable String key, @NonNull String message) {
+        if (key == null) {
+            Log.d(TAG, message);
+        } else {
+            Log.d(key, message);
         }
     }
 }

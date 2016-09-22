@@ -14,6 +14,9 @@ public interface AudioMediaControl {
     //audioMedia pause
     void pause();
 
+    //recovery the music
+    void recovery();
+
     //audioMedia stop
     void stop();
 
